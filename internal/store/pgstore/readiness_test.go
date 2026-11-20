@@ -43,7 +43,7 @@ func TestSchemaReadinessStaysNotReadyWhileDatabaseIsDown(t *testing.T) {
 
 // Ready only once the schema exists: otherwise traffic would hit a missing table.
 func TestSchemaReadinessBecomesReadyAfterMigration(t *testing.T) {
-	pool := isolatedPool(t, testDatabaseURL(t))
+	pool := isolatedPool(t, testDatabaseURL)
 	readiness := pgstore.NewSchemaReadiness(pool)
 	if err := readiness.Ping(t.Context()); err == nil {
 		t.Fatal("Ping() before migration error = nil, want not ready")

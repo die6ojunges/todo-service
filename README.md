@@ -83,7 +83,7 @@ curl -i -X DELETE $B/todos/<id>   # 204 No Content
 ## Running locally
 
 Requirements: Go 1.25+. `make` and a C compiler (`build-essential`) are needed for `make` targets
-and for the race detector. Docker with Compose v2 runs the local PostgreSQL.
+and for the race detector. Docker (with Compose v2) runs the local PostgreSQL and the PostgreSQL tests.
 
 ```bash
 make run            # starts the compose PostgreSQL, then the API against it
@@ -121,16 +121,19 @@ Invalid values fail fast at startup with a message naming the variable, the valu
 ### Quality gates
 
 ```bash
-make test              # go test ./... (with -race when cgo is available); PostgreSQL tests skip
-make test-integration  # same, plus PostgreSQL tests against the compose database (`make db-up`)
+make test   # go test ./... (with -race when cgo is available)
 make ci     # fmt-check → vet → golangci-lint → govulncheck → gosec → test
 ```
 
 The same `make ci` runs:
 
 - **before every commit**, through a versioned git hook. Enable it once per clone with `make hooks`.
-- **on every push**, in GitHub Actions (`.github/workflows/ci.yml`), with a PostgreSQL service so the
-  PostgreSQL tests run there too.
+- **on every push**, in GitHub Actions (`.github/workflows/ci.yml`).
+
+The PostgreSQL store is tested against a real, disposable PostgreSQL started by
+[Testcontainers](https://golang.testcontainers.org/) (same image as `compose.yaml`), so `make test`
+needs Docker running but no setup. It fails rather than skips without Docker, so a green run always
+covers the database.
 Tool versions are pinned in the `Makefile` and run via `go run`, so nothing needs to be installed globally.
 
 ---

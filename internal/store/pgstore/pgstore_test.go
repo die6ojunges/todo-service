@@ -2,7 +2,6 @@ package pgstore_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -16,7 +15,7 @@ import (
 )
 
 func TestPgStoreSatisfiesStoreContract(t *testing.T) {
-	url := testDatabaseURL(t)
+	url := testDatabaseURL
 	todotest.RunStoreContract(t, func(t *testing.T) todo.Store {
 		pool := isolatedPool(t, url)
 		mustMigrate(t, pool)
@@ -26,24 +25,13 @@ func TestPgStoreSatisfiesStoreContract(t *testing.T) {
 
 // Replicas start together, so Migrate must tolerate concurrent and repeated calls.
 func TestMigrateIsIdempotentUnderConcurrency(t *testing.T) {
-	pool := isolatedPool(t, testDatabaseURL(t))
+	pool := isolatedPool(t, testDatabaseURL)
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() { mustMigrate(t, pool) })
 	}
 	wg.Wait()
 	mustMigrate(t, pool)
-}
-
-// testDatabaseURL skips PostgreSQL tests unless a database is provided, so `make test`
-// stays fast and Docker-free; `make test-integration` and CI provide one.
-func testDatabaseURL(t *testing.T) string {
-	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set; run `make test-integration`")
-	}
-	return url
 }
 
 // isolatedPool gives each test its own empty schema, dropped afterwards. Tests stay independent
@@ -62,14 +50,14 @@ func connectPool(t *testing.T, url, schema string) *pgxpool.Pool {
 	t.Helper()
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		t.Fatalf("parse TEST_DATABASE_URL: %v", err)
+		t.Fatalf("parse test database URL: %v", err)
 	}
 	if schema != "" {
 		cfg.ConnConfig.RuntimeParams["search_path"] = schema
 	}
 	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
 	if err != nil {
-		t.Fatalf("connect to TEST_DATABASE_URL: %v", err)
+		t.Fatalf("connect to test database: %v", err)
 	}
 	t.Cleanup(pool.Close)
 	return pool

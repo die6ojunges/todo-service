@@ -8,20 +8,6 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # Real PostgreSQL so the pgstore tests run in CI instead of skipping (same version as compose.yaml).
-    services:
-      postgres:
-        image: postgres:17.6-alpine
-        env:
-          POSTGRES_DB: todo
-          POSTGRES_USER: todo
-          POSTGRES_PASSWORD: todo
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U todo -d todo"
-          --health-interval 2s --health-timeout 3s --health-retries 15
-    env:
-      TEST_DATABASE_URL: postgres://todo:todo@localhost:5432/todo?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

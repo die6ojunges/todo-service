@@ -1,5 +1,5 @@
 # Single entry points for local development and CI.
-.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-down db-reset db-psql test-integration
+.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-down db-reset db-psql
 
 # Tool versions pinned here; `go run pkg@version` avoids polluting go.mod and needs no global install.
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
@@ -10,11 +10,8 @@ GOSEC         := github.com/securego/gosec/v2/cmd/gosec@v2.30.0
 RACE := $(shell command -v gcc >/dev/null 2>&1 && echo "-race")
 TEST_ENV := $(if $(RACE),CGO_ENABLED=1,)
 
-# The compose database (compose.yaml defaults). Both URLs can be overridden from the environment.
-LOCAL_DATABASE_URL := postgres://todo:todo@127.0.0.1:5432/todo?sslmode=disable
-DATABASE_URL       ?= $(LOCAL_DATABASE_URL)
-# PostgreSQL tests skip without it.
-TEST_DATABASE_URL  ?= $(LOCAL_DATABASE_URL)
+# The compose database (compose.yaml defaults); override from the environment to use another.
+DATABASE_URL ?= postgres://todo:todo@127.0.0.1:5432/todo?sslmode=disable
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -28,11 +25,8 @@ build: ## Build the binary into ./bin
 run: db-up ## Run the service locally against the compose database
 	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/todo-api
 
-test: ## Run the full test suite (with -race when cgo is available)
+test: ## Run the full test suite (with -race when cgo is available; needs Docker for PostgreSQL tests)
 	$(TEST_ENV) go test $(RACE) ./...
-
-test-integration: db-up ## Full suite including PostgreSQL tests, against the compose database
-	$(TEST_ENV) TEST_DATABASE_URL='$(TEST_DATABASE_URL)' go test $(RACE) -count=1 ./...
 
 fmt: ## Format code
 	gofmt -w .
