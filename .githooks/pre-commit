@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Runs the same gates as CI before every commit, so main never receives a red commit.
+# Enable once per clone with `make hooks`. Bypass in an emergency with `git commit --no-verify`.
+set -e
+echo "pre-commit: running make ci..."
+make ci

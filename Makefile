@@ -1,5 +1,5 @@
 # Single entry points for local development and CI.
-.PHONY: help build run test fmt fmt-check vet lint vuln sec ci
+.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci
 
 # Tool versions pinned here; `go run pkg@version` avoids polluting go.mod and needs no global install.
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
@@ -12,6 +12,9 @@ TEST_ENV := $(if $(RACE),CGO_ENABLED=1,)
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+
+hooks: ## Enable the versioned git hooks (pre-commit runs `make ci`)
+	git config core.hooksPath .githooks
 
 build: ## Build the binary into ./bin
 	CGO_ENABLED=0 go build -trimpath -o bin/todo-api ./cmd/todo-api

@@ -80,7 +80,10 @@ make test   # go test ./... (with -race when cgo is available)
 make ci     # fmt-check → vet → golangci-lint → govulncheck → gosec → test
 ```
 
-The same `make ci` runs on every push in GitHub Actions (`.github/workflows/ci.yml`).
+The same `make ci` runs:
+
+- **before every commit**, through a versioned git hook. Enable it once per clone with `make hooks`.
+- **on every push**, in GitHub Actions (`.github/workflows/ci.yml`).
 Tool versions are pinned in the `Makefile` and run via `go run`, so nothing needs to be installed globally.
 
 ---
