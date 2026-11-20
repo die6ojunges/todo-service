@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/die6ojunges/todo-service/internal/store/memstore"
 	"github.com/die6ojunges/todo-service/internal/todo"
+	"github.com/die6ojunges/todo-service/internal/todo/todotest"
 )
 
 // sequentialIDs is a deterministic IDGenerator so assertions can name exact IDs.
@@ -22,7 +22,7 @@ func sequentialIDs() todo.IDGenerator {
 }
 
 func newTestService() *todo.Service {
-	return todo.NewService(memstore.New(), sequentialIDs())
+	return todo.NewService(todotest.NewFakeStore(), sequentialIDs())
 }
 
 func ptr[T any](v T) *T { return &v }

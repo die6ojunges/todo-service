@@ -170,7 +170,8 @@ and this choice keeps its intent, which is persistence.
 The store sits behind a `Store` interface with two implementations:
 
 - **PostgreSQL**, used in every environment.
-- **In-memory**, used only to keep HTTP handler unit tests fast and dependency-free.
+- **In-memory fake** (`todotest.FakeStore`), used only in tests of the service and HTTP layers, to keep
+  them fast and dependency-free. It passes the same contract suite as PostgreSQL, so it can be trusted.
 
 For the time-boxed demo, PostgreSQL runs **in the cluster** as a StatefulSet with a PVC, which covers
 the optional PVC item of the challenge. Its credentials are in a Secret. In production a managed
@@ -226,8 +227,7 @@ also sets read, write and header timeouts, which protects against slow-client (S
 cmd/todo-api/      entrypoint — only wires dependencies
 internal/config/   environment → typed Config, validated at startup
 internal/todo/     domain: model, validation rules, Store interface, Service
-internal/todo/todotest/  Store contract suite every storage backend must pass
-internal/store/memstore/ in-memory Store (tests only)
+internal/todo/todotest/  Store contract suite, and the in-memory FakeStore used by tests
 internal/store/pgstore/  PostgreSQL Store, embedded schema migration, readiness gate
 internal/retry/    exponential backoff used to wait for PostgreSQL on startup
 internal/httpapi/  HTTP only: routing, JSON decoding, Problem Details, health probes
@@ -239,7 +239,7 @@ interface. The wire format (`todoResponse`) is kept separate from the domain typ
 can't change by accident.
 
 `Store.Update` takes a *change function* rather than a full item. This makes read-modify-write atomic:
-two concurrent PATCH requests can't lose each other's changes. The in-memory store holds a lock, and the
+two concurrent PATCH requests can't lose each other's changes. The in-memory fake holds a lock, and the
 PostgreSQL store uses a `SELECT … FOR UPDATE` transaction. A shared contract suite (`todotest`)
 runs against every store implementation, which proves this property, including under concurrency.
 

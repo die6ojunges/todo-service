@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/die6ojunges/todo-service/internal/httpapi"
-	"github.com/die6ojunges/todo-service/internal/store/memstore"
 	"github.com/die6ojunges/todo-service/internal/todo"
+	"github.com/die6ojunges/todo-service/internal/todo/todotest"
 )
 
 // apiClient drives the full router in-process, like a real HTTP client would.
@@ -31,7 +31,7 @@ func newAPIClient(t *testing.T) *apiClient {
 		next++
 		return uuid.MustParse(fmt.Sprintf("00000000-0000-4000-8000-%012d", next))
 	}
-	service := todo.NewService(memstore.New(), ids)
+	service := todo.NewService(todotest.NewFakeStore(), ids)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	router := httpapi.NewRouter(httpapi.NewHealthChecks(pingOK{}), httpapi.NewTodoAPI(service, logger), logger)
 	return &apiClient{t: t, router: router}

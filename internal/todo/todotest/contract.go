@@ -1,5 +1,5 @@
 // Package todotest holds a reusable contract suite every todo.Store implementation must pass,
-// so the in-memory and PostgreSQL stores are guaranteed to behave identically.
+// so FakeStore and the PostgreSQL store are guaranteed to behave identically.
 package todotest
 
 import (
@@ -18,7 +18,7 @@ type StoreFactory func(t *testing.T) todo.Store
 
 // RunStoreContract runs the full contract against stores built by newStore.
 //
-//	func TestMemStore(t *testing.T) { todotest.RunStoreContract(t, func(*testing.T) todo.Store { return memstore.New() }) }
+//	func TestFakeStore(t *testing.T) { todotest.RunStoreContract(t, func(*testing.T) todo.Store { return todotest.NewFakeStore() }) }
 func RunStoreContract(t *testing.T, newStore StoreFactory) {
 	t.Run("list empty is non-nil", func(t *testing.T) { testListEmpty(t, newStore(t)) })
 	t.Run("list keeps insertion order", func(t *testing.T) { testListOrder(t, newStore(t)) })
