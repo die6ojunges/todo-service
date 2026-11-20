@@ -12,7 +12,7 @@ with health probes, externalized configuration and graceful shutdown.
 | Liveness / readiness probes (`/livez`, `/readyz`) | ✅ |
 | Graceful shutdown (SIGTERM → drain → shutdown) | ✅ |
 | CI gates (fmt, vet, lint, vuln, sec, tests) | ✅ |
-| ToDo CRUD API | 🚧 |
+| ToDo REST API (CRUD + PATCH) | ✅ |
 | PostgreSQL storage | 🚧 |
 | Dockerfile (multi-stage) + docker compose | 🚧 |
 | Kubernetes manifests | 🚧 |
@@ -29,7 +29,7 @@ with health probes, externalized configuration and graceful shutdown.
 | GET | `/livez` | process is alive | — (never checks dependencies) |
 | GET | `/readyz` | ready to take traffic | dependency down, or shutting down |
 
-### ToDo 🚧
+### ToDo
 
 Resource:
 
@@ -46,7 +46,37 @@ Resource:
 | PATCH | `/todos/{id}` *(extra)* | 200 + body (partial update) | 400 / 422, 404 |
 | DELETE | `/todos/{id}` | 204, no body | 404 |
 
-Errors use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
+- **Request bodies** must be a single JSON object, up to 1 MiB.
+  - POST and PUT require `Content-Type: application/json`.
+  - PATCH accepts `application/merge-patch+json` or `application/json`.
+  - Otherwise the API returns 415, or 413 for an oversized body.
+- **Writable fields** are `title` and `completed`.
+  - An unknown field returns 400. This includes `id`, which the server assigns.
+  - Malformed JSON or a wrong type also returns 400.
+- **Validation** returns 422.
+  - `title` is trimmed and must be 1–200 characters.
+  - PUT requires both fields.
+  - `null` is rejected: in JSON Merge Patch it means "remove", and every field is required.
+- **Errors** use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`):
+
+```json
+{"type":"about:blank","title":"Unprocessable Entity","status":422,
+ "detail":"invalid completed: is required for a full replacement (PUT)","instance":"/todos/0c38f020-…"}
+```
+
+### Examples
+
+```bash
+B=localhost:8080
+curl -i -X POST $B/todos -H 'Content-Type: application/json' -d '{"title":"Record demo"}'
+# HTTP/1.1 201 Created
+# Location: /todos/0c38f020-cb85-47dc-8373-8ae30b8b7750
+curl $B/todos
+curl $B/todos/<id>
+curl -X PUT   $B/todos/<id> -H 'Content-Type: application/json' -d '{"title":"Record demo","completed":true}'
+curl -X PATCH $B/todos/<id> -H 'Content-Type: application/merge-patch+json' -d '{"completed":false}'
+curl -i -X DELETE $B/todos/<id>   # 204 No Content
+```
 
 ---
 
@@ -171,9 +201,23 @@ also sets read, write and header timeouts, which protects against slow-client (S
 ```
 cmd/todo-api/      entrypoint — only wires dependencies
 internal/config/   environment → typed Config, validated at startup
-internal/httpapi/  HTTP handlers (health; ToDo API 🚧)
+internal/todo/     domain: model, validation rules, Store interface, Service
+internal/todo/todotest/  Store contract suite every storage backend must pass
+internal/store/memstore/ in-memory Store (tests only; PostgreSQL 🚧)
+internal/httpapi/  HTTP only: routing, JSON decoding, Problem Details, health probes
 internal/server/   HTTP server lifecycle and graceful shutdown
 ```
+
+The domain package knows nothing about HTTP or SQL. The HTTP layer depends on a small `TodoService`
+interface. The wire format (`todoResponse`) is kept separate from the domain type, so the JSON contract
+can't change by accident.
+
+`Store.Update` takes a *change function* rather than a full item. This makes read-modify-write atomic:
+two concurrent PATCH requests can't lose each other's changes. The in-memory store holds a lock, and the
+PostgreSQL store will use a `SELECT … FOR UPDATE` transaction. A shared contract suite (`todotest`)
+runs against every store implementation, which proves this property, including under concurrency.
+
+A panic in a handler is recovered into a logged 500, so one bad request can't take down other requests.
 
 Dependencies are injected through constructors: the env lookup, the readiness dependency and the
 logger are all parameters. Tests use named fakes instead of globals. Logs are structured JSON

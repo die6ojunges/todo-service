@@ -25,7 +25,7 @@ type HealthChecks struct {
 // NewHealthChecks wires probes to the dependency that must be up for readiness.
 //
 //	health := httpapi.NewHealthChecks(dbPool)
-//	mux.Handle("/", health.Routes())
+//	router := httpapi.NewRouter(health, todos, logger)
 func NewHealthChecks(dependency Pinger) *HealthChecks {
 	return &HealthChecks{dependency: dependency}
 }
@@ -35,12 +35,16 @@ func (h *HealthChecks) StartDraining() {
 	h.draining.Store(true)
 }
 
-// Routes returns a mux with GET /livez and GET /readyz.
+// Routes returns a mux with only the probes; the service mounts them via NewRouter.
 func (h *HealthChecks) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	h.register(mux)
+	return mux
+}
+
+func (h *HealthChecks) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /livez", h.serveLiveness)
 	mux.HandleFunc("GET /readyz", h.serveReadiness)
-	return mux
 }
 
 // serveLiveness answers "is the process alive?" — deliberately checks nothing external.

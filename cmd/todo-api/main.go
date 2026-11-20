@@ -11,9 +11,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
+
 	"github.com/die6ojunges/todo-service/internal/config"
 	"github.com/die6ojunges/todo-service/internal/httpapi"
 	"github.com/die6ojunges/todo-service/internal/server"
+	"github.com/die6ojunges/todo-service/internal/store/memstore"
+	"github.com/die6ojunges/todo-service/internal/todo"
 )
 
 func main() {
@@ -39,8 +43,11 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("listen on port %d: %w", cfg.Port, err)
 	}
 	health := httpapi.NewHealthChecks(noDatabaseYet{})
+	// Temporary: in-memory store until the PostgreSQL store lands (README "Design decisions" §1).
+	service := todo.NewService(memstore.New(), uuid.New)
+	router := httpapi.NewRouter(health, httpapi.NewTodoAPI(service, logger), logger)
 	timeouts := server.Timeouts{Drain: cfg.ReadinessDrainDelay, Shutdown: cfg.ShutdownTimeout}
-	return server.New(health.Routes(), health, timeouts, logger).Serve(ctx, listener)
+	return server.New(router, health, timeouts, logger).Serve(ctx, listener)
 }
 
 // noDatabaseYet is a temporary readiness dependency until the Postgres store lands;
