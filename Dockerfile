@@ -16,7 +16,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # but does have CA certificates and a non-root user. Only the binary is copied over.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/todo-api /todo-api
-USER nonroot:nonroot
+# Numeric UID/GID of distroless's "nonroot" user: Kubernetes' runAsNonRoot can only verify a
+# numeric user, and rejects a named one with CreateContainerConfigError.
+USER 65532:65532
 EXPOSE 8080
 # Exec form, so the binary is PID 1 and receives SIGTERM directly for graceful shutdown.
 ENTRYPOINT ["/todo-api"]
