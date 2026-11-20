@@ -1,0 +1,27 @@
+# Local development stack. For now only PostgreSQL; the API service joins once the
+# Dockerfile lands (SPEC D6: `docker compose up` starts the API and the same database as the cluster).
+name: todo-service
+
+services:
+  postgres:
+    # Pinned major+minor so every dev machine and CI run the same server version.
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-todo}
+      POSTGRES_USER: ${POSTGRES_USER:-todo}
+      # Local-only default; real credentials come from a Kubernetes Secret (SPEC D1).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-todo}
+    ports:
+      # Bound to loopback so the dev database is never reachable from the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `--wait` in `make db-up` blocks on this, so callers get a database that accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

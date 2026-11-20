@@ -1,5 +1,5 @@
 # Single entry points for local development and CI.
-.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci
+.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-down db-reset db-psql
 
 # Tool versions pinned here; `go run pkg@version` avoids polluting go.mod and needs no global install.
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
@@ -44,3 +44,15 @@ sec: ## Static security analysis
 	go run $(GOSEC) -quiet ./...
 
 ci: fmt-check vet lint vuln sec test ## Everything CI runs, in order
+
+db-up: ## Start local PostgreSQL and wait until it accepts connections
+	docker compose up -d --wait postgres
+
+db-down: ## Stop local PostgreSQL (data is kept in the named volume)
+	docker compose down
+
+db-reset: ## Stop local PostgreSQL and delete its data
+	docker compose down -v
+
+db-psql: ## Open a psql shell inside the local PostgreSQL container
+	docker compose exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'

@@ -83,13 +83,26 @@ curl -i -X DELETE $B/todos/<id>   # 204 No Content
 ## Running locally
 
 Requirements: Go 1.25+. `make` and a C compiler (`build-essential`) are needed for `make` targets
-and for the race detector.
+and for the race detector. Docker with Compose v2 runs the local PostgreSQL.
 
 ```bash
 make run            # or: go run ./cmd/todo-api
 curl -i localhost:8080/livez
 curl -i localhost:8080/readyz
 ```
+
+### Local PostgreSQL
+
+```bash
+make db-up     # start PostgreSQL 17 and wait until it accepts connections
+make db-psql   # psql shell inside the container (no local psql needed)
+make db-down   # stop it; data is kept in a named volume
+make db-reset  # stop it and wipe the data
+```
+
+It listens on `127.0.0.1:5432` only, with user, password and database `todo` (override with
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`). The API does not use it yet: the
+PostgreSQL store is 🚧, and the API service joins `compose.yaml` once the Dockerfile lands.
 
 ### Configuration
 
