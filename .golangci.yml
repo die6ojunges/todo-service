@@ -1,0 +1,28 @@
+# Code-style rules enforced by the linter (function size, nesting, duplication, error handling).
+version: "2"
+linters:
+  enable:
+    - funlen       # functions of 4-20 lines
+    - nestif       # max 2 levels of nesting
+    - gocyclo
+    - dupl         # no code duplication
+    - errorlint    # wrap/compare errors correctly
+    - bodyclose
+    - noctx
+    - revive
+    - misspell
+  settings:
+    funlen:
+      lines: 25        # 20 lines of logic + signature/braces
+      statements: 20
+    nestif:
+      min-complexity: 3
+    gocyclo:
+      min-complexity: 10
+  exclusions:
+    rules:
+      - path: _test\.go   # table-driven tests are naturally long
+        linters: [funlen, dupl]
+formatters:
+  enable:
+    - gofmt

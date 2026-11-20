@@ -1,0 +1,3 @@
+module github.com/die6ojunges/todo-service
+
+go 1.25.0
