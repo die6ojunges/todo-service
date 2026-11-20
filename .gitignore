@@ -2,3 +2,4 @@
 *.out
 coverage.*
 .env
+deploy/k8s/postgres.env

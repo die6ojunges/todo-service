@@ -15,7 +15,7 @@ with health probes, externalized configuration and graceful shutdown.
 | ToDo REST API (CRUD + PATCH) | ✅ |
 | PostgreSQL storage | ✅ |
 | Dockerfile (multi-stage) + docker compose | ✅ |
-| Kubernetes manifests | 🚧 |
+| Kubernetes manifests (tested on kind) | ✅ |
 | Cloud demo (DigitalOcean) | 🚧 |
 
 ---
@@ -162,11 +162,44 @@ docker run --rm -p 127.0.0.1:8080:8080 --network todo-service_default \
 The compose file gives the API a 25s `stop_grace_period`, because Docker's default of 10s would kill it
 during the graceful shutdown (drain plus in-flight requests).
 
-## Kubernetes deployment 🚧
+## Kubernetes deployment
 
-Manifests for: Deployment (2 replicas, CPU/memory requests and limits, liveness/readiness probes),
-Service (`LoadBalancer`), ConfigMap, Secret, and PostgreSQL as a StatefulSet with a PersistentVolumeClaim.
-Tested locally on kind/k3d and demoed on DigitalOcean Kubernetes (DOKS).
+Manifests live in `deploy/k8s/` and are applied together with kustomize (built into `kubectl`):
+
+| File | What |
+|---|---|
+| `api-deployment.yaml` | API Deployment: 2 replicas, CPU/memory requests and limits, liveness (`/livez`) and readiness (`/readyz`) probes, 30s termination grace period, non-root, read-only root filesystem, no capabilities |
+| `api-service.yaml` | `LoadBalancer` Service on port 80 (public IP in the cloud) |
+| `configmap.yaml` | `PORT`, `SHUTDOWN_TIMEOUT`, `READINESS_DRAIN_DELAY` |
+| `postgres-statefulset.yaml` | PostgreSQL 17 with a 1 Gi PersistentVolumeClaim |
+| `postgres-service.yaml` | Headless Service giving the database the stable name `postgres` |
+| `kustomization.yaml` | Namespace `todo`, plus the `postgres-credentials` Secret generated from `postgres.env` |
+
+The database password is never committed. `postgres.env` is gitignored, and `make k8s-secret` creates it
+from `postgres.env.example` with a random password. The API builds `DATABASE_URL` from the same Secret,
+so the password exists in one place only.
+
+### Local cluster (kind)
+
+[kind](https://kind.sigs.k8s.io/) runs through `go run` at a pinned version, so only Docker and `kubectl`
+are needed:
+
+```bash
+make kind-deploy        # create cluster, build + load image, create secret, apply, wait for rollout
+make kind-port-forward  # LoadBalancer stays <pending> on kind; this maps the Service to localhost:8080
+curl -i localhost:8080/todos
+make kind-down          # delete the cluster
+```
+
+Every `kubectl` call in the Makefile pins the `kind-todo` context, so it can never deploy to another cluster.
+
+Behavior verified on kind:
+
+- Both replicas serve the same data (written through one pod, read through the other).
+- Data survives a restart of the PostgreSQL pod (PVC).
+- With PostgreSQL down, `/livez` stays 200 and `/readyz` returns 503. Both pods leave the Service
+  endpoints **without restarting**, and come back on their own when the database returns.
+- Deleting an API pod drains it for 5s and shuts it down cleanly, well inside the grace period.
 
 ---
 

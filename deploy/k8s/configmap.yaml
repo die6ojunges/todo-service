@@ -1,0 +1,9 @@
+# Non-secret settings, read by the API as environment variables (README "Configuration").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-api-config
+data:
+  PORT: "8080"
+  SHUTDOWN_TIMEOUT: "15s"
+  READINESS_DRAIN_DELAY: "5s"

@@ -16,3 +16,5 @@ jobs:
       - run: make ci
       # Catches a broken Dockerfile on every push; kept out of `make ci` so pre-commit stays fast.
       - run: docker build -t todo-api:ci .
+      # Manifests must render; the real postgres.env is gitignored, so render with the example.
+      - run: cp deploy/k8s/postgres.env.example deploy/k8s/postgres.env && kubectl kustomize deploy/k8s > /dev/null

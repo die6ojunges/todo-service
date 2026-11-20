@@ -1,0 +1,14 @@
+# LoadBalancer gives the cloud demo a public IP (SPEC D6). On kind it stays <pending>;
+# use `make kind-port-forward` instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-api
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: todo-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

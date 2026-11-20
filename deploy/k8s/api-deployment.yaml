@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-api
+  labels:
+    app.kubernetes.io/name: todo-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: todo-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: todo-api
+    spec:
+      # Must exceed READINESS_DRAIN_DELAY (5s) + SHUTDOWN_TIMEOUT (15s), or the kubelet
+      # SIGKILLs the pod mid-shutdown (README "Design decisions" §5).
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: todo-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: todo-api-config
+          env:
+            # Declared before DATABASE_URL so Kubernetes can expand $(VAR) references: the
+            # password lives only in the Secret, never duplicated into another key.
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POSTGRES_USER}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POSTGRES_PASSWORD}}
+            - name: POSTGRES_DB
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POSTGRES_DB}}
+            - name: DATABASE_URL
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
+          # Liveness never checks the database: an outage must not restart every replica.
+          livenessProbe:
+            httpGet: {path: /livez, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          # Readiness pings the database (800ms budget in the app) and fails while draining.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 2
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

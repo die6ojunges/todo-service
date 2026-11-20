@@ -1,10 +1,11 @@
 # Single entry points for local development and CI.
-.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-psql up down reset docker-build
+.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-psql up down reset docker-build k8s-secret kind-up kind-deploy kind-port-forward kind-down
 
 # Tool versions pinned here; `go run pkg@version` avoids polluting go.mod and needs no global install.
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 GOVULNCHECK   := golang.org/x/vuln/cmd/govulncheck@latest
 GOSEC         := github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+KIND          := go run sigs.k8s.io/kind@v0.33.0
 
 # The race detector needs cgo (a C compiler); enable it only where one exists (CI does).
 RACE := $(shell command -v gcc >/dev/null 2>&1 && echo "-race")
@@ -14,7 +15,7 @@ TEST_ENV := $(if $(RACE),CGO_ENABLED=1,)
 DATABASE_URL ?= postgres://todo:todo@127.0.0.1:5432/todo?sslmode=disable
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
 
 hooks: ## Enable the versioned git hooks (pre-commit runs `make ci`)
 	git config core.hooksPath .githooks
@@ -65,3 +66,28 @@ db-up: ## Start only PostgreSQL and wait until it accepts connections (for `make
 
 db-psql: ## Open a psql shell inside the PostgreSQL container
 	docker compose exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
+# Every kubectl call names the kind context explicitly, so a deploy can never hit another cluster.
+KIND_CLUSTER := todo
+KUBECTL_KIND := kubectl --context kind-$(KIND_CLUSTER)
+K8S_SECRET_ENV := deploy/k8s/postgres.env
+
+k8s-secret: ## Create the gitignored Kubernetes credentials file with a random password (kept if present)
+	@test -f $(K8S_SECRET_ENV) || { sed "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$$(openssl rand -hex 16)/" \
+		deploy/k8s/postgres.env.example > $(K8S_SECRET_ENV) && echo "created $(K8S_SECRET_ENV)"; }
+
+kind-up: ## Create the local kind cluster (no-op if it exists)
+	@$(KIND) get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || $(KIND) create cluster --name $(KIND_CLUSTER) --wait 60s
+
+kind-deploy: kind-up docker-build k8s-secret ## Build the image, load it into kind and apply the manifests
+	$(KIND) load docker-image todo-api:dev --name $(KIND_CLUSTER)
+	$(KUBECTL_KIND) apply -k deploy/k8s
+	$(KUBECTL_KIND) -n todo rollout status statefulset/postgres --timeout=120s
+	$(KUBECTL_KIND) -n todo rollout restart deployment/todo-api
+	$(KUBECTL_KIND) -n todo rollout status deployment/todo-api --timeout=120s
+
+kind-port-forward: ## Expose the kind Service on localhost:8080 (LoadBalancer stays pending on kind)
+	$(KUBECTL_KIND) -n todo port-forward service/todo-api 8080:80
+
+kind-down: ## Delete the local kind cluster
+	$(KIND) delete cluster --name $(KIND_CLUSTER)
