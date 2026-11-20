@@ -1,11 +1,12 @@
 # Single entry points for local development and CI.
-.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-psql up down reset docker-build k8s-secret kind-up kind-deploy kind-port-forward kind-down
+.PHONY: help hooks build run test fmt fmt-check vet lint vuln sec ci db-up db-psql up down reset docker-build k8s-secret kind-up kind-deploy kind-port-forward kind-down do-auth do-up do-deploy do-url do-down
 
 # Tool versions pinned here; `go run pkg@version` avoids polluting go.mod and needs no global install.
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 GOVULNCHECK   := golang.org/x/vuln/cmd/govulncheck@latest
 GOSEC         := github.com/securego/gosec/v2/cmd/gosec@v2.30.0
 KIND          := go run sigs.k8s.io/kind@v0.33.0
+DOCTL         := go run github.com/digitalocean/doctl/cmd/doctl@v1.186.0
 
 # The race detector needs cgo (a C compiler); enable it only where one exists (CI does).
 RACE := $(shell command -v gcc >/dev/null 2>&1 && echo "-race")
@@ -91,3 +92,43 @@ kind-port-forward: ## Expose the kind Service on localhost:8080 (LoadBalancer st
 
 kind-down: ## Delete the local kind cluster
 	$(KIND) delete cluster --name $(KIND_CLUSTER)
+
+# DigitalOcean demo (README "Cloud demo"). Billed hourly: run `make do-down` when done.
+DO_REGION   ?= nyc3
+DO_CLUSTER  ?= todo
+DO_NODES    ?= 2
+DO_SIZE     ?= s-1vcpu-2gb
+# Registry names are global on DigitalOcean; override if this one is taken.
+DO_REGISTRY ?= die6ojunges-todo
+# Tagging with the commit makes every deploy traceable and forces a rollout.
+DO_IMAGE    := registry.digitalocean.com/$(DO_REGISTRY)/todo-api:$(shell git rev-parse --short HEAD)
+KUBECTL_DO  := kubectl --context do-$(DO_REGION)-$(DO_CLUSTER)
+
+do-auth: ## Store a DigitalOcean API token for doctl (interactive, once)
+	$(DOCTL) auth init
+
+do-up: ## Create the registry and the DOKS cluster (costs money while it exists)
+	$(DOCTL) registry get $(DO_REGISTRY) >/dev/null 2>&1 || \
+		$(DOCTL) registry create $(DO_REGISTRY) --subscription-tier starter --region $(DO_REGION)
+	$(DOCTL) kubernetes cluster get $(DO_CLUSTER) >/dev/null 2>&1 || \
+		$(DOCTL) kubernetes cluster create $(DO_CLUSTER) --region $(DO_REGION) --size $(DO_SIZE) --count $(DO_NODES) --wait
+	$(DOCTL) kubernetes cluster registry add $(DO_CLUSTER)
+	$(DOCTL) kubernetes cluster kubeconfig save $(DO_CLUSTER)
+
+do-deploy: k8s-secret ## Build and push the image, apply the manifests and print the public URL
+	docker build -t $(DO_IMAGE) .
+	$(DOCTL) registry login
+	docker push $(DO_IMAGE)
+	kubectl kustomize deploy/k8s | sed 's#image: todo-api:dev#image: $(DO_IMAGE)#' | $(KUBECTL_DO) apply -f -
+	$(KUBECTL_DO) -n todo rollout status statefulset/postgres --timeout=180s
+	$(KUBECTL_DO) -n todo rollout status deployment/todo-api --timeout=180s
+	@$(MAKE) --no-print-directory do-url
+
+do-url: ## Wait for the LoadBalancer IP and print the public URL
+	@until ip=$$($(KUBECTL_DO) -n todo get service todo-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}') && [ -n "$$ip" ]; do \
+		echo "waiting for load balancer IP..."; sleep 10; done; echo "http://$$ip"
+
+do-down: ## Delete the cluster with its load balancer and volumes, then list what is left
+	$(DOCTL) kubernetes cluster delete $(DO_CLUSTER) --dangerous --force
+	@echo "load balancers left:"; $(DOCTL) compute load-balancer list --format Name,IP --no-header
+	@echo "volumes left:"; $(DOCTL) compute volume list --format Name,Size --no-header
