@@ -10,8 +10,11 @@ GOSEC         := github.com/securego/gosec/v2/cmd/gosec@v2.30.0
 RACE := $(shell command -v gcc >/dev/null 2>&1 && echo "-race")
 TEST_ENV := $(if $(RACE),CGO_ENABLED=1,)
 
-# PostgreSQL tests skip without it. Defaults to the compose database; override to use another.
-TEST_DATABASE_URL ?= postgres://todo:todo@127.0.0.1:5432/todo?sslmode=disable
+# The compose database (compose.yaml defaults). Both URLs can be overridden from the environment.
+LOCAL_DATABASE_URL := postgres://todo:todo@127.0.0.1:5432/todo?sslmode=disable
+DATABASE_URL       ?= $(LOCAL_DATABASE_URL)
+# PostgreSQL tests skip without it.
+TEST_DATABASE_URL  ?= $(LOCAL_DATABASE_URL)
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -22,8 +25,8 @@ hooks: ## Enable the versioned git hooks (pre-commit runs `make ci`)
 build: ## Build the binary into ./bin
 	CGO_ENABLED=0 go build -trimpath -o bin/todo-api ./cmd/todo-api
 
-run: ## Run the service locally
-	go run ./cmd/todo-api
+run: db-up ## Run the service locally against the compose database
+	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/todo-api
 
 test: ## Run the full test suite (with -race when cgo is available)
 	$(TEST_ENV) go test $(RACE) ./...

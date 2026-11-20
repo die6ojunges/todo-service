@@ -13,7 +13,7 @@ with health probes, externalized configuration and graceful shutdown.
 | Graceful shutdown (SIGTERM → drain → shutdown) | ✅ |
 | CI gates (fmt, vet, lint, vuln, sec, tests) | ✅ |
 | ToDo REST API (CRUD + PATCH) | ✅ |
-| PostgreSQL storage | 🚧 |
+| PostgreSQL storage | ✅ |
 | Dockerfile (multi-stage) + docker compose | 🚧 |
 | Kubernetes manifests | 🚧 |
 | Cloud demo (DigitalOcean) | 🚧 |
@@ -86,7 +86,7 @@ Requirements: Go 1.25+. `make` and a C compiler (`build-essential`) are needed f
 and for the race detector. Docker with Compose v2 runs the local PostgreSQL.
 
 ```bash
-make run            # or: go run ./cmd/todo-api
+make run            # starts the compose PostgreSQL, then the API against it
 curl -i localhost:8080/livez
 curl -i localhost:8080/readyz
 ```
@@ -101,8 +101,8 @@ make db-reset  # stop it and wipe the data
 ```
 
 It listens on `127.0.0.1:5432` only, with user, password and database `todo` (override with
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`). The API does not use it yet: the
-PostgreSQL store is 🚧, and the API service joins `compose.yaml` once the Dockerfile lands.
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`). The API service joins `compose.yaml`
+once the Dockerfile lands.
 
 ### Configuration
 
@@ -113,8 +113,10 @@ All settings come from environment variables (in Kubernetes: a ConfigMap, plus a
 | `PORT` | `8080` | HTTP listen port |
 | `SHUTDOWN_TIMEOUT` | `15s` | Max time for in-flight requests to finish after SIGTERM |
 | `READINESS_DRAIN_DELAY` | `5s` | Time `/readyz` reports 503 before the server stops |
+| `DATABASE_URL` | — (required) | PostgreSQL URL, e.g. `postgres://user:password@host:5432/db` (in Kubernetes: a Secret) |
 
-Invalid values fail fast at startup with a message naming the variable, the value and the expected shape.
+Invalid values fail fast at startup with a message naming the variable, the value and the expected shape
+(all invalid variables are reported at once). `DATABASE_URL` is never echoed, since it holds the password.
 
 ### Quality gates
 
@@ -198,6 +200,10 @@ kube-apiserver's own `/livez` and `/readyz`):
 - **Readiness (`/readyz`): "can this pod take traffic?"** It pings the database with a short timeout
   and returns 503 during shutdown, so the pod leaves the Service endpoints before it stops.
 
+PostgreSQL may come up after the service. So at startup the service begins serving at once and keeps
+retrying the connection and schema migration with exponential backoff (0.5s up to 10s). Until both
+succeed, `/readyz` returns 503 while `/livez` stays 200, so Kubernetes waits instead of restarting the pod.
+
 ### 5. Graceful shutdown
 
 On `SIGTERM` (what Kubernetes sends on pod termination):
@@ -219,7 +225,8 @@ internal/config/   environment → typed Config, validated at startup
 internal/todo/     domain: model, validation rules, Store interface, Service
 internal/todo/todotest/  Store contract suite every storage backend must pass
 internal/store/memstore/ in-memory Store (tests only)
-internal/store/pgstore/  PostgreSQL Store and its embedded schema migration
+internal/store/pgstore/  PostgreSQL Store, embedded schema migration, readiness gate
+internal/retry/    exponential backoff used to wait for PostgreSQL on startup
 internal/httpapi/  HTTP only: routing, JSON decoding, Problem Details, health probes
 internal/server/   HTTP server lifecycle and graceful shutdown
 ```

@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -19,25 +20,35 @@ type Config struct {
 	// ReadinessDrainDelay is how long /readyz reports 503 before the server stops,
 	// giving Kubernetes time to remove the pod from the Service endpoints.
 	ReadinessDrainDelay time.Duration
+	// DatabaseURL is the PostgreSQL connection string; in Kubernetes it comes from a Secret.
+	// Never log it: it carries the password.
+	DatabaseURL string
 }
 
 // Load builds a Config from the environment, applying defaults for unset keys.
 //
 //	cfg, err := config.Load(os.LookupEnv)
 func Load(lookup LookupFunc) (Config, error) {
-	port, err := portFromEnv(lookup, "PORT", 8080)
-	if err != nil {
+	var cfg Config
+	var errs [4]error
+	cfg.Port, errs[0] = portFromEnv(lookup, "PORT", 8080)
+	cfg.ShutdownTimeout, errs[1] = durationFromEnv(lookup, "SHUTDOWN_TIMEOUT", 15*time.Second)
+	cfg.ReadinessDrainDelay, errs[2] = durationFromEnv(lookup, "READINESS_DRAIN_DELAY", 5*time.Second)
+	cfg.DatabaseURL, errs[3] = requiredFromEnv(lookup, "DATABASE_URL", "a PostgreSQL URL like postgres://user:password@host:5432/db")
+	if err := errors.Join(errs[:]...); err != nil {
 		return Config{}, err
 	}
-	shutdown, err := durationFromEnv(lookup, "SHUTDOWN_TIMEOUT", 15*time.Second)
-	if err != nil {
-		return Config{}, err
+	return cfg, nil
+}
+
+// requiredFromEnv fails when key is unset or empty; the message never echoes a value,
+// since required settings such as DATABASE_URL carry secrets.
+func requiredFromEnv(lookup LookupFunc, key, want string) (string, error) {
+	raw, ok := lookup(key)
+	if !ok || raw == "" {
+		return "", fmt.Errorf("missing %s: want %s", key, want)
 	}
-	drain, err := durationFromEnv(lookup, "READINESS_DRAIN_DELAY", 5*time.Second)
-	if err != nil {
-		return Config{}, err
-	}
-	return Config{Port: port, ShutdownTimeout: shutdown, ReadinessDrainDelay: drain}, nil
+	return raw, nil
 }
 
 func portFromEnv(lookup LookupFunc, key string, fallback int) (int, error) {
