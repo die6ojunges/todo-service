@@ -119,14 +119,16 @@ Invalid values fail fast at startup with a message naming the variable, the valu
 ### Quality gates
 
 ```bash
-make test   # go test ./... (with -race when cgo is available)
+make test              # go test ./... (with -race when cgo is available); PostgreSQL tests skip
+make test-integration  # same, plus PostgreSQL tests against the compose database (`make db-up`)
 make ci     # fmt-check → vet → golangci-lint → govulncheck → gosec → test
 ```
 
 The same `make ci` runs:
 
 - **before every commit**, through a versioned git hook. Enable it once per clone with `make hooks`.
-- **on every push**, in GitHub Actions (`.github/workflows/ci.yml`).
+- **on every push**, in GitHub Actions (`.github/workflows/ci.yml`), with a PostgreSQL service so the
+  PostgreSQL tests run there too.
 Tool versions are pinned in the `Makefile` and run via `go run`, so nothing needs to be installed globally.
 
 ---
@@ -216,7 +218,8 @@ cmd/todo-api/      entrypoint — only wires dependencies
 internal/config/   environment → typed Config, validated at startup
 internal/todo/     domain: model, validation rules, Store interface, Service
 internal/todo/todotest/  Store contract suite every storage backend must pass
-internal/store/memstore/ in-memory Store (tests only; PostgreSQL 🚧)
+internal/store/memstore/ in-memory Store (tests only)
+internal/store/pgstore/  PostgreSQL Store and its embedded schema migration
 internal/httpapi/  HTTP only: routing, JSON decoding, Problem Details, health probes
 internal/server/   HTTP server lifecycle and graceful shutdown
 ```
@@ -227,7 +230,7 @@ can't change by accident.
 
 `Store.Update` takes a *change function* rather than a full item. This makes read-modify-write atomic:
 two concurrent PATCH requests can't lose each other's changes. The in-memory store holds a lock, and the
-PostgreSQL store will use a `SELECT … FOR UPDATE` transaction. A shared contract suite (`todotest`)
+PostgreSQL store uses a `SELECT … FOR UPDATE` transaction. A shared contract suite (`todotest`)
 runs against every store implementation, which proves this property, including under concurrency.
 
 A panic in a handler is recovered into a logged 500, so one bad request can't take down other requests.
