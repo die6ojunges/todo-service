@@ -14,3 +14,5 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make ci
+      # Catches a broken Dockerfile on every push; kept out of `make ci` so pre-commit stays fast.
+      - run: docker build -t todo-api:ci .

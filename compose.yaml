@@ -1,8 +1,22 @@
-# Local development stack. For now only PostgreSQL; the API service joins once the
-# Dockerfile lands (SPEC D6: `docker compose up` starts the API and the same database as the cluster).
+# Local stack: `docker compose up` starts the API and the same PostgreSQL as the cluster (SPEC D6).
 name: todo-service
 
 services:
+  api:
+    build: .
+    image: todo-api:dev
+    environment:
+      # Same credentials as the postgres service below; "postgres" is its hostname on the compose network.
+      DATABASE_URL: postgres://${POSTGRES_USER:-todo}:${POSTGRES_PASSWORD:-todo}@postgres:5432/${POSTGRES_DB:-todo}?sslmode=disable
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      # Not strictly needed (the API retries until the database is up), but it keeps startup logs clean.
+      postgres:
+        condition: service_healthy
+    # Docker's default 10s would SIGKILL mid-shutdown: drain (5s) + shutdown timeout (15s) need more.
+    stop_grace_period: 25s
+
   postgres:
     # Pinned major+minor so every dev machine and CI run the same server version.
     image: postgres:17.6-alpine

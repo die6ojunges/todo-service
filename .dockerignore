@@ -1,0 +1,7 @@
+# Only go.mod, go.sum, cmd/ and internal/ are needed to build; keep the context small and
+# keep local-only files (docs, agent notes, binaries, git history) out of it.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/

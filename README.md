@@ -14,7 +14,7 @@ with health probes, externalized configuration and graceful shutdown.
 | CI gates (fmt, vet, lint, vuln, sec, tests) | ✅ |
 | ToDo REST API (CRUD + PATCH) | ✅ |
 | PostgreSQL storage | ✅ |
-| Dockerfile (multi-stage) + docker compose | 🚧 |
+| Dockerfile (multi-stage) + docker compose | ✅ |
 | Kubernetes manifests | 🚧 |
 | Cloud demo (DigitalOcean) | 🚧 |
 
@@ -86,23 +86,22 @@ Requirements: Go 1.25+. `make` and a C compiler (`build-essential`) are needed f
 and for the race detector. Docker (with Compose v2) runs the local PostgreSQL and the PostgreSQL tests.
 
 ```bash
-make run            # starts the compose PostgreSQL, then the API against it
+make up             # whole stack in Docker: builds the image, starts API + PostgreSQL
+make run            # or: API from source (go run) against the compose PostgreSQL
 curl -i localhost:8080/livez
 curl -i localhost:8080/readyz
+make down           # stop everything; data is kept (make reset also wipes it)
 ```
 
 ### Local PostgreSQL
 
 ```bash
-make db-up     # start PostgreSQL 17 and wait until it accepts connections
+make db-up     # start only PostgreSQL 17 and wait until it accepts connections
 make db-psql   # psql shell inside the container (no local psql needed)
-make db-down   # stop it; data is kept in a named volume
-make db-reset  # stop it and wipe the data
 ```
 
 It listens on `127.0.0.1:5432` only, with user, password and database `todo` (override with
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`). The API service joins `compose.yaml`
-once the Dockerfile lands.
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`). Data lives in a named volume.
 
 ### Configuration
 
@@ -138,10 +137,30 @@ Tool versions are pinned in the `Makefile` and run via `go run`, so nothing need
 
 ---
 
-## Docker 🚧
+## Docker
 
-Multi-stage build from the official Go image, exposing port 8080; `docker compose up` will start the
-API together with PostgreSQL.
+The `Dockerfile` is a multi-stage build:
+
+1. **Build** on the official `golang:1.25-alpine` image: a static binary (`CGO_ENABLED=0`, `-trimpath`,
+   stripped), with BuildKit cache mounts so rebuilds are fast.
+2. **Run** on `gcr.io/distroless/static-debian12:nonroot`: only the binary, no shell or package manager,
+   running as a non-root user. The image is about 20 MB and exposes port 8080.
+
+```bash
+make docker-build   # docker build -t todo-api:dev .
+docker compose up --build   # API + PostgreSQL (what `make up` runs, detached)
+```
+
+To run the image on its own, point it at a reachable PostgreSQL. With the compose database running
+(`make db-up`), join its network:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 --network todo-service_default \
+  -e DATABASE_URL='postgres://todo:todo@postgres:5432/todo?sslmode=disable' todo-api:dev
+```
+
+The compose file gives the API a 25s `stop_grace_period`, because Docker's default of 10s would kill it
+during the graceful shutdown (drain plus in-flight requests).
 
 ## Kubernetes deployment 🚧
 
