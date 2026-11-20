@@ -35,12 +35,11 @@ func badRequest(format string, args ...any) error {
 // and are logged, never leaked to the client.
 func writeError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
 	var reqErr *requestError
-	var invalid *todo.ValidationError
 	switch {
 	case errors.As(err, &reqErr):
 		writeProblem(w, r, reqErr.status, reqErr.detail)
-	case errors.As(err, &invalid):
-		writeProblem(w, r, http.StatusUnprocessableEntity, invalid.Error())
+	case errors.Is(err, todo.ErrInvalid):
+		writeProblem(w, r, http.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, todo.ErrNotFound):
 		writeProblem(w, r, http.StatusNotFound, err.Error())
 	default:

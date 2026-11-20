@@ -5,7 +5,6 @@ package todo
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -20,20 +19,9 @@ type Todo struct {
 // ErrNotFound is returned when no item has the requested ID.
 var ErrNotFound = errors.New("todo not found")
 
-// ValidationError reports input that breaks a domain rule; callers map it to HTTP 422.
-type ValidationError struct {
-	Field string
-	Value string
-	Rule  string
-}
-
-// Error names the field, the offending value (when there is one) and the rule broken.
-func (e *ValidationError) Error() string {
-	if e.Value == "" {
-		return fmt.Sprintf("invalid %s: %s", e.Field, e.Rule)
-	}
-	return fmt.Sprintf("invalid %s=%q: %s", e.Field, e.Value, e.Rule)
-}
+// ErrInvalid marks input that breaks a domain rule; callers map it to HTTP 422. Wrap it with the
+// field, the offending value and the rule, e.g. fmt.Errorf("%w title=%q: must not be blank", ErrInvalid, raw).
+var ErrInvalid = errors.New("invalid")
 
 // Store persists ToDo items. Implementations must be safe for concurrent use.
 type Store interface {

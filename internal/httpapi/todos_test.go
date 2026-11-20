@@ -98,6 +98,7 @@ func TestValidationErrorsReturn422(t *testing.T) {
 		"missing title": `{}`,
 		"blank title":   `{"title":"   "}`,
 		"long title":    `{"title":"` + strings.Repeat("a", 201) + `"}`,
+		"null title":    `{"title":null}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -136,4 +137,16 @@ func TestHealthRoutesAreMounted(t *testing.T) {
 	api := newAPIClient(t)
 	assertStatus(t, api.do(http.MethodGet, "/livez", "", ""), http.StatusOK)
 	assertStatus(t, api.do(http.MethodGet, "/readyz", "", ""), http.StatusOK)
+}
+
+// The detail text is part of the documented contract (README example), so pin it.
+func TestReplaceWithoutCompletedReturns422WithDetail(t *testing.T) {
+	api := newAPIClient(t)
+	api.create("x")
+	rec := api.json(http.MethodPut, "/todos/"+firstID, `{"title":"y"}`)
+	assertProblem(t, rec, http.StatusUnprocessableEntity)
+	want := `"detail":"invalid completed: is required for a full replacement (PUT)"`
+	if !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("body = %s, want it to contain %s", rec.Body.String(), want)
+	}
 }

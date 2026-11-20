@@ -79,7 +79,7 @@ func readField[T any](fields todoFields, name string) (*T, error) {
 		return nil, nil
 	}
 	if string(raw) == "null" {
-		return nil, &todo.ValidationError{Field: name, Value: "null", Rule: "must not be null"}
+		return nil, fmt.Errorf("%w %s=null: must not be null", todo.ErrInvalid, name)
 	}
 	var value T
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -109,10 +109,10 @@ func (f todoFields) toDraft(requireCompleted bool) (todo.Draft, error) {
 		return todo.Draft{}, err
 	}
 	if patch.Title == nil {
-		return todo.Draft{}, &todo.ValidationError{Field: "title", Rule: "is required"}
+		return todo.Draft{}, fmt.Errorf("%w title: is required", todo.ErrInvalid)
 	}
 	if patch.Completed == nil && requireCompleted {
-		return todo.Draft{}, &todo.ValidationError{Field: "completed", Rule: "is required for a full replacement (PUT)"}
+		return todo.Draft{}, fmt.Errorf("%w completed: is required for a full replacement (PUT)", todo.ErrInvalid)
 	}
 	draft := todo.Draft{Title: *patch.Title}
 	if patch.Completed != nil {

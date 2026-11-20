@@ -105,11 +105,10 @@ func applyPatch(current Todo, patch Patch) (Todo, error) {
 func normalizeTitle(raw string) (string, error) {
 	title := strings.TrimSpace(raw)
 	if title == "" {
-		return "", &ValidationError{Field: "title", Value: raw, Rule: "must not be empty or blank"}
+		return "", fmt.Errorf("%w title=%q: must not be empty or blank", ErrInvalid, raw)
 	}
 	if utf8.RuneCountInString(title) > MaxTitleLength {
-		rule := fmt.Sprintf("must be at most %d characters", MaxTitleLength)
-		return "", &ValidationError{Field: "title", Value: truncateForError(title), Rule: rule}
+		return "", fmt.Errorf("%w title=%q: must be at most %d characters", ErrInvalid, truncateForError(title), MaxTitleLength)
 	}
 	return title, nil
 }

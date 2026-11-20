@@ -49,9 +49,8 @@ func TestCreateRejectsInvalidTitles(t *testing.T) {
 	for name, title := range cases {
 		t.Run(name, func(t *testing.T) {
 			_, err := newTestService().Create(t.Context(), todo.Draft{Title: title})
-			var invalid *todo.ValidationError
-			if !errors.As(err, &invalid) || invalid.Field != "title" {
-				t.Fatalf("Create(%q) error = %v, want *ValidationError on field title", title, err)
+			if !errors.Is(err, todo.ErrInvalid) || !strings.Contains(err.Error(), "invalid title=") {
+				t.Fatalf("Create(%q) error = %v, want todo.ErrInvalid naming the title and its value", title, err)
 			}
 		})
 	}
@@ -121,9 +120,8 @@ func TestPatchValidatesTitleWithoutSaving(t *testing.T) {
 	svc := newTestService()
 	created, _ := svc.Create(t.Context(), todo.Draft{Title: "original"})
 	_, err := svc.Patch(t.Context(), created.ID, todo.Patch{Title: ptr("  ")})
-	var invalid *todo.ValidationError
-	if !errors.As(err, &invalid) {
-		t.Fatalf("Patch() error = %v, want *ValidationError", err)
+	if !errors.Is(err, todo.ErrInvalid) {
+		t.Fatalf("Patch() error = %v, want todo.ErrInvalid", err)
 	}
 	stored, _ := svc.Get(t.Context(), created.ID)
 	if stored.Title != "original" {
