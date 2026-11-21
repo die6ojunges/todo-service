@@ -105,19 +105,10 @@ func applyPatch(current Todo, patch Patch) (Todo, error) {
 func normalizeTitle(raw string) (string, error) {
 	title := strings.TrimSpace(raw)
 	if title == "" {
-		return "", fmt.Errorf("%w title=%q: must not be empty or blank", ErrInvalid, raw)
+		return "", ErrTitleBlank
 	}
 	if utf8.RuneCountInString(title) > MaxTitleLength {
-		return "", fmt.Errorf("%w title=%q: must be at most %d characters", ErrInvalid, truncateForError(title), MaxTitleLength)
+		return "", ErrTitleTooLong
 	}
 	return title, nil
-}
-
-// truncateForError keeps error messages readable when the offending value is huge.
-func truncateForError(value string) string {
-	const shown = 40
-	if utf8.RuneCountInString(value) <= shown {
-		return value
-	}
-	return string([]rune(value)[:shown]) + "…"
 }

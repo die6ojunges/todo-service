@@ -40,17 +40,20 @@ func TestCreateAssignsServerIDAndTrimsTitle(t *testing.T) {
 }
 
 func TestCreateRejectsInvalidTitles(t *testing.T) {
-	cases := map[string]string{
-		"empty":      "",
-		"blank":      "   ",
-		"too long":   strings.Repeat("a", todo.MaxTitleLength+1),
-		"multi-byte": strings.Repeat("é", todo.MaxTitleLength+1),
+	cases := map[string]struct {
+		title string
+		want  error
+	}{
+		"empty":      {"", todo.ErrTitleBlank},
+		"blank":      {"   ", todo.ErrTitleBlank},
+		"too long":   {strings.Repeat("a", todo.MaxTitleLength+1), todo.ErrTitleTooLong},
+		"multi-byte": {strings.Repeat("é", todo.MaxTitleLength+1), todo.ErrTitleTooLong},
 	}
-	for name, title := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := newTestService().Create(t.Context(), todo.Draft{Title: title})
-			if !errors.Is(err, todo.ErrInvalid) || !strings.Contains(err.Error(), "invalid title=") {
-				t.Fatalf("Create(%q) error = %v, want todo.ErrInvalid naming the title and its value", title, err)
+			_, err := newTestService().Create(t.Context(), todo.Draft{Title: tc.title})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Create(%q) error = %v, want %v", tc.title, err, tc.want)
 			}
 		})
 	}
@@ -120,8 +123,8 @@ func TestPatchValidatesTitleWithoutSaving(t *testing.T) {
 	svc := newTestService()
 	created, _ := svc.Create(t.Context(), todo.Draft{Title: "original"})
 	_, err := svc.Patch(t.Context(), created.ID, todo.Patch{Title: ptr("  ")})
-	if !errors.Is(err, todo.ErrInvalid) {
-		t.Fatalf("Patch() error = %v, want todo.ErrInvalid", err)
+	if !errors.Is(err, todo.ErrTitleBlank) {
+		t.Fatalf("Patch() error = %v, want todo.ErrTitleBlank", err)
 	}
 	stored, _ := svc.Get(t.Context(), created.ID)
 	if stored.Title != "original" {

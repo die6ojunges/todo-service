@@ -140,7 +140,7 @@ func (a *TodoAPI) respondWithItem(w http.ResponseWriter, r *http.Request, status
 }
 
 func decodeDraft(w http.ResponseWriter, r *http.Request, requireCompleted bool) (todo.Draft, error) {
-	if err := requireContentType(r, "application/json"); err != nil {
+	if err := requireContentType(r, errNotJSON, "application/json"); err != nil {
 		return todo.Draft{}, err
 	}
 	fields, err := decodeFields(w, r)
@@ -151,7 +151,7 @@ func decodeDraft(w http.ResponseWriter, r *http.Request, requireCompleted bool) 
 }
 
 func decodePatch(w http.ResponseWriter, r *http.Request) (todo.Patch, error) {
-	if err := requireContentType(r, "application/merge-patch+json", "application/json"); err != nil {
+	if err := requireContentType(r, errNotPatchJSON, "application/merge-patch+json", "application/json"); err != nil {
 		return todo.Patch{}, err
 	}
 	fields, err := decodeFields(w, r)

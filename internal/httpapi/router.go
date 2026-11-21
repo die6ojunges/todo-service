@@ -31,7 +31,7 @@ func recoverPanics(next http.Handler, logger *slog.Logger) http.Handler {
 			}
 			logger.Error("panic serving request", "method", r.Method, "path", r.URL.Path,
 				"panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
-			writeProblem(w, r, http.StatusInternalServerError, "unexpected error; see server logs")
+			writeProblem(w, http.StatusInternalServerError, internalErrorDetail)
 		}()
 		next.ServeHTTP(w, r)
 	})

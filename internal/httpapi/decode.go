@@ -3,12 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -16,21 +14,20 @@ import (
 )
 
 // maxBodyBytes caps request bodies; a ToDo is tiny, so 1 MiB is generous and blocks memory abuse.
+// errBodyTooLarge states this limit.
 const maxBodyBytes = 1 << 20
 
+// writableFields are the only keys a body may contain (errUnknownField names them).
 var writableFields = []string{"title", "completed"}
 
 // todoFields keeps the raw JSON per field so we can tell "absent" from "null" (needed for merge patch).
 type todoFields map[string]json.RawMessage
 
-func requireContentType(r *http.Request, allowed ...string) error {
-	header := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(header)
+// requireContentType returns unsupported unless the media type is one of allowed.
+func requireContentType(r *http.Request, unsupported error, allowed ...string) error {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || !slices.Contains(allowed, mediaType) {
-		return &requestError{
-			status: http.StatusUnsupportedMediaType,
-			detail: fmt.Sprintf("Content-Type %q is not supported; want %s", header, strings.Join(allowed, " or ")),
-		}
+		return unsupported
 	}
 	return nil
 }
@@ -43,29 +40,33 @@ func decodeFields(w http.ResponseWriter, r *http.Request) (todoFields, error) {
 		return nil, classifyDecodeError(err)
 	}
 	if fields == nil {
-		return nil, badRequest("request body must be a JSON object, got null")
+		return nil, errNotSingleObject // the body was JSON null
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, badRequest("request body must contain a single JSON object")
+		return nil, errNotSingleObject
 	}
 	return fields, rejectUnknownFields(fields)
 }
 
+// classifyDecodeError maps a decoder failure to a fixed client error; the decoder's own
+// message (Go type names, offsets) is never shown to clients.
 func classifyDecodeError(err error) error {
 	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) {
-		return &requestError{
-			status: http.StatusRequestEntityTooLarge,
-			detail: fmt.Sprintf("request body exceeds %d bytes", tooLarge.Limit),
-		}
+	var notAnObject *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &tooLarge):
+		return errBodyTooLarge
+	case errors.As(err, &notAnObject):
+		return errNotSingleObject // valid JSON, but an array, string or number
+	default:
+		return errMalformedJSON
 	}
-	return badRequest("malformed JSON body: %v", err)
 }
 
 func rejectUnknownFields(fields todoFields) error {
 	for name := range fields {
 		if !slices.Contains(writableFields, name) {
-			return badRequest("unknown field %q; writable fields are %s", name, strings.Join(writableFields, ", "))
+			return errUnknownField
 		}
 	}
 	return nil
@@ -79,11 +80,11 @@ func readField[T any](fields todoFields, name string) (*T, error) {
 		return nil, nil
 	}
 	if string(raw) == "null" {
-		return nil, fmt.Errorf("%w %s=null: must not be null", todo.ErrInvalid, name)
+		return nil, errNullField
 	}
 	var value T
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, badRequest("field %q has the wrong type (got %s): %v", name, raw, err)
+		return nil, errWrongType
 	}
 	return &value, nil
 }
@@ -109,10 +110,10 @@ func (f todoFields) toDraft(requireCompleted bool) (todo.Draft, error) {
 		return todo.Draft{}, err
 	}
 	if patch.Title == nil {
-		return todo.Draft{}, fmt.Errorf("%w title: is required", todo.ErrInvalid)
+		return todo.Draft{}, errTitleRequired
 	}
 	if patch.Completed == nil && requireCompleted {
-		return todo.Draft{}, fmt.Errorf("%w completed: is required for a full replacement (PUT)", todo.ErrInvalid)
+		return todo.Draft{}, errCompletedRequired
 	}
 	draft := todo.Draft{Title: *patch.Title}
 	if patch.Completed != nil {
@@ -125,7 +126,7 @@ func parseID(r *http.Request) (uuid.UUID, error) {
 	raw := r.PathValue("id")
 	id, err := uuid.Parse(raw)
 	if err != nil {
-		return uuid.Nil, badRequest("invalid id %q: want a UUID like 3f1c9a52-6a0e-4b8e-9a51-0d2b6f1e7c11", raw)
+		return uuid.Nil, errInvalidID
 	}
 	return id, nil
 }

@@ -5,6 +5,7 @@ package todo
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -16,12 +17,15 @@ type Todo struct {
 	Completed bool
 }
 
-// ErrNotFound is returned when no item has the requested ID.
-var ErrNotFound = errors.New("todo not found")
-
-// ErrInvalid marks input that breaks a domain rule; callers map it to HTTP 422. Wrap it with the
-// field, the offending value and the rule, e.g. fmt.Errorf("%w title=%q: must not be blank", ErrInvalid, raw).
-var ErrInvalid = errors.New("invalid")
+// Domain errors. Their messages are fixed and safe to show to API clients: they never include
+// the offending value, so nothing a client sends is ever reflected back (see httpapi.publicErrors).
+var (
+	// ErrNotFound is returned when no item has the requested ID.
+	ErrNotFound = errors.New("todo not found")
+	// ErrTitleBlank and ErrTitleTooLong break the title rules; the HTTP layer maps them to 422.
+	ErrTitleBlank   = errors.New("title must not be blank")
+	ErrTitleTooLong = fmt.Errorf("title must be at most %d characters", MaxTitleLength)
+)
 
 // Store persists ToDo items. Implementations must be safe for concurrent use.
 type Store interface {

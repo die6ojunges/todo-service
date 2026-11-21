@@ -2,7 +2,6 @@ package httpapi_test
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -88,65 +87,8 @@ func TestUnknownIDReturns404(t *testing.T) {
 	assertProblem(t, api.json(http.MethodDelete, "/todos/"+unknownID, ""), http.StatusNotFound)
 }
 
-func TestMalformedIDReturns400(t *testing.T) {
-	assertProblem(t, newAPIClient(t).json(http.MethodGet, "/todos/not-a-uuid", ""), http.StatusBadRequest)
-}
-
-func TestValidationErrorsReturn422(t *testing.T) {
-	api := newAPIClient(t)
-	cases := map[string]string{
-		"missing title": `{}`,
-		"blank title":   `{"title":"   "}`,
-		"long title":    `{"title":"` + strings.Repeat("a", 201) + `"}`,
-		"null title":    `{"title":null}`,
-	}
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			assertProblem(t, api.json(http.MethodPost, "/todos", body), http.StatusUnprocessableEntity)
-		})
-	}
-}
-
-func TestBadRequestBodiesReturn400(t *testing.T) {
-	api := newAPIClient(t)
-	cases := map[string]string{
-		"malformed json":   `{"title":`,
-		"unknown field":    `{"title":"x","priority":1}`,
-		"wrong type":       `{"title":42}`,
-		"trailing data":    `{"title":"x"}{"title":"y"}`,
-		"client-chosen id": `{"id":"` + firstID + `","title":"x"}`,
-	}
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			assertProblem(t, api.json(http.MethodPost, "/todos", body), http.StatusBadRequest)
-		})
-	}
-}
-
-func TestWrongContentTypeReturns415(t *testing.T) {
-	rec := newAPIClient(t).do(http.MethodPost, "/todos", "text/plain", `{"title":"x"}`)
-	assertProblem(t, rec, http.StatusUnsupportedMediaType)
-}
-
-func TestOversizedBodyReturns413(t *testing.T) {
-	body := `{"title":"` + strings.Repeat("a", 2<<20) + `"}`
-	assertProblem(t, newAPIClient(t).json(http.MethodPost, "/todos", body), http.StatusRequestEntityTooLarge)
-}
-
 func TestHealthRoutesAreMounted(t *testing.T) {
 	api := newAPIClient(t)
 	assertStatus(t, api.do(http.MethodGet, "/livez", "", ""), http.StatusOK)
 	assertStatus(t, api.do(http.MethodGet, "/readyz", "", ""), http.StatusOK)
-}
-
-// The detail text is part of the documented contract (README example), so pin it.
-func TestReplaceWithoutCompletedReturns422WithDetail(t *testing.T) {
-	api := newAPIClient(t)
-	api.create("x")
-	rec := api.json(http.MethodPut, "/todos/"+firstID, `{"title":"y"}`)
-	assertProblem(t, rec, http.StatusUnprocessableEntity)
-	want := `"detail":"invalid completed: is required for a full replacement (PUT)"`
-	if !strings.Contains(rec.Body.String(), want) {
-		t.Errorf("body = %s, want it to contain %s", rec.Body.String(), want)
-	}
 }

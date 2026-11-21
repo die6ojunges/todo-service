@@ -3,59 +3,79 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/die6ojunges/todo-service/internal/todo"
 )
 
-// problem is an RFC 9457 Problem Details body.
+// problem is an RFC 9457 Problem Details body. "type" is omitted because it defaults to
+// about:blank ("the status code says it all"), and "instance" because it would echo the path.
 type problem struct {
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Status   int    `json:"status"`
-	Detail   string `json:"detail,omitempty"`
-	Instance string `json:"instance,omitempty"`
+	Title  string `json:"title"`
+	Status int    `json:"status"`
+	Detail string `json:"detail"`
 }
 
-// requestError is a client mistake detected by the HTTP layer (400, 413, 415).
-type requestError struct {
+// Client errors detected by the HTTP layer. Like the domain errors, their messages are fixed:
+// nothing from the request (values, field names, headers, path) and no parser internals are
+// ever reflected back, which rules out injected content and fingerprinting.
+var (
+	errInvalidID         = errors.New("id must be a UUID")
+	errMalformedJSON     = errors.New("request body must be valid JSON")
+	errNotSingleObject   = errors.New("request body must be a single JSON object")
+	errUnknownField      = errors.New("request body may only contain the fields title and completed")
+	errWrongType         = errors.New("title must be a string and completed must be a boolean")
+	errNullField         = errors.New("title and completed must not be null")
+	errTitleRequired     = errors.New("title is required")
+	errCompletedRequired = errors.New("completed is required when replacing a todo")
+	errBodyTooLarge      = errors.New("request body must be at most 1 MiB") // matches maxBodyBytes
+	errNotJSON           = errors.New("content type must be application/json")
+	errNotPatchJSON      = errors.New("content type must be application/merge-patch+json or application/json")
+)
+
+// publicError pairs a known error with its HTTP status; the error's own message is the detail.
+type publicError struct {
+	err    error
 	status int
-	detail string
 }
 
-func (e *requestError) Error() string { return e.detail }
-
-func badRequest(format string, args ...any) error {
-	return &requestError{status: http.StatusBadRequest, detail: fmt.Sprintf(format, args...)}
+// publicErrors is the complete client-facing error contract. An error not listed here becomes
+// a 500 whose cause is logged but never returned.
+var publicErrors = []publicError{
+	{errInvalidID, http.StatusBadRequest},
+	{errMalformedJSON, http.StatusBadRequest},
+	{errNotSingleObject, http.StatusBadRequest},
+	{errUnknownField, http.StatusBadRequest},
+	{errWrongType, http.StatusBadRequest},
+	{todo.ErrNotFound, http.StatusNotFound},
+	{errBodyTooLarge, http.StatusRequestEntityTooLarge},
+	{errNotJSON, http.StatusUnsupportedMediaType},
+	{errNotPatchJSON, http.StatusUnsupportedMediaType},
+	{errNullField, http.StatusUnprocessableEntity},
+	{errTitleRequired, http.StatusUnprocessableEntity},
+	{errCompletedRequired, http.StatusUnprocessableEntity},
+	{todo.ErrTitleBlank, http.StatusUnprocessableEntity},
+	{todo.ErrTitleTooLong, http.StatusUnprocessableEntity},
 }
 
-// writeError maps any error to a Problem Details response; unknown errors become 500
-// and are logged, never leaked to the client.
+// internalErrorDetail is all a client learns about a server-side failure.
+const internalErrorDetail = "internal server error"
+
+// writeError answers with the fixed message of a known error, or a logged 500 otherwise.
 func writeError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
-	var reqErr *requestError
-	switch {
-	case errors.As(err, &reqErr):
-		writeProblem(w, r, reqErr.status, reqErr.detail)
-	case errors.Is(err, todo.ErrInvalid):
-		writeProblem(w, r, http.StatusUnprocessableEntity, err.Error())
-	case errors.Is(err, todo.ErrNotFound):
-		writeProblem(w, r, http.StatusNotFound, err.Error())
-	default:
-		logger.Error("request failed", "method", r.Method, "path", r.URL.Path, "error", err.Error())
-		writeProblem(w, r, http.StatusInternalServerError, "unexpected error; see server logs")
+	for _, known := range publicErrors {
+		if errors.Is(err, known.err) {
+			writeProblem(w, known.status, known.err.Error())
+			return
+		}
 	}
+	logger.Error("request failed", "method", r.Method, "path", r.URL.Path, "error", err.Error())
+	writeProblem(w, http.StatusInternalServerError, internalErrorDetail)
 }
 
-func writeProblem(w http.ResponseWriter, r *http.Request, status int, detail string) {
-	body := problem{
-		Type:     "about:blank",
-		Title:    http.StatusText(status),
-		Status:   status,
-		Detail:   detail,
-		Instance: r.URL.Path,
-	}
+func writeProblem(w http.ResponseWriter, status int, detail string) {
+	body := problem{Title: http.StatusText(status), Status: status, Detail: detail}
 	writeBody(w, status, "application/problem+json", body)
 }
 

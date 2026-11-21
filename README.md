@@ -60,9 +60,13 @@ Resource:
 - **Errors** use [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`):
 
 ```json
-{"type":"about:blank","title":"Unprocessable Entity","status":422,
- "detail":"invalid completed: is required for a full replacement (PUT)","instance":"/todos/0c38f020-…"}
+{"title":"Unprocessable Entity","status":422,"detail":"completed is required when replacing a todo"}
 ```
+
+  Every `detail` is a fixed message from one table (`publicErrors` in `internal/httpapi/problem.go`).
+  Nothing from the request (values, field names, headers, path) and no internals are echoed back, so
+  errors can't carry injected content or fingerprint the stack. Unexpected failures return a generic
+  500 and are logged server-side.
 
 ### Examples
 
