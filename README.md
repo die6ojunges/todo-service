@@ -164,6 +164,21 @@ during the graceful shutdown (drain plus in-flight requests).
 
 ## Kubernetes deployment
 
+```mermaid
+flowchart LR
+  client([Client / curl]) -->|HTTP :80| lb[Service todo-api<br/>LoadBalancer]
+  kubelet([kubelet]) -.->|/livez · /readyz| api1 & api2
+  subgraph ns[namespace: todo]
+    lb --> api1[Pod todo-api]
+    lb --> api2[Pod todo-api]
+    cm[(ConfigMap<br/>todo-api-config)] -.->|env| api1 & api2
+    sec[(Secret<br/>postgres-credentials)] -.->|env| api1 & api2 & pg
+    api1 & api2 -->|SQL :5432| svc[Service postgres<br/>headless]
+    svc --> pg[StatefulSet<br/>postgres-0]
+    pg --- pvc[(PVC 1 Gi)]
+  end
+```
+
 Manifests live in `deploy/k8s/` and are applied together with kustomize (built into `kubectl`):
 
 | File | What |
